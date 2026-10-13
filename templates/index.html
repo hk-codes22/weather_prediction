@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="page-title">Weather Prediction Using Satellite Images</h1>
+    <p class="page-subtitle mb-1">
+        Analyse historical weather records and estimate rainfall with a simple machine learning model.
+    </p>
+    {% if using_upload %}
+        <span class="badge text-bg-primary">Using your uploaded CSV</span>
+    {% else %}
+        <span class="badge text-bg-secondary">Using sample demonstration data (not real NOAA observations)</span>
+    {% endif %}
+</div>
+
+{% if stats %}
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card stat-card h-100"><div class="card-body">
+            <div class="stat-label">Total records</div>
+            <div class="stat-value">{{ stats.total_records }}</div>
+        </div></div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card stat-card h-100"><div class="card-body">
+            <div class="stat-label">Average rainfall</div>
+            <div class="stat-value">{{ stats.average_rainfall }} mm</div>
+        </div></div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card stat-card h-100"><div class="card-body">
+            <div class="stat-label">Maximum rainfall</div>
+            <div class="stat-value">{{ stats.max_rainfall }} mm</div>
+        </div></div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card stat-card h-100"><div class="card-body">
+            <div class="stat-label">Latest observation</div>
+            <div class="stat-value">{{ stats.latest_date }}</div>
+        </div></div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">Rainfall trend</div>
+    <div class="card-body text-center">
+        {% if chart %}
+            <img class="img-fluid" src="data:image/png;base64,{{ chart }}" alt="Rainfall trend chart">
+        {% else %}
+            <p class="text-muted mb-0">The rainfall chart will appear here after Step 8 (Matplotlib).</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6 col-lg-3"><a class="btn btn-primary w-100" href="{{ url_for('weather_data') }}">Weather Data</a></div>
+    <div class="col-md-6 col-lg-3"><a class="btn btn-primary w-100" href="{{ url_for('prediction') }}">Rainfall Prediction</a></div>
+    <div class="col-md-6 col-lg-3"><a class="btn btn-primary w-100" href="{{ url_for('analysis') }}">Weather Analysis</a></div>
+    <div class="col-md-6 col-lg-3"><a class="btn btn-primary w-100" href="{{ url_for('satellite') }}">Satellite Images</a></div>
+</div>
+{% endblock %}

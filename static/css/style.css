@@ -1,0 +1,36 @@
+/* style.css - light background with blue and navy accents */
+:root {
+    --navy: #0b2545;
+    --blue: #1d4ed8;
+    --light-bg: #f4f7fb;
+    --border: #dbe3ee;
+}
+
+body {
+    background-color: var(--light-bg);
+    color: #1f2937;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.navbar-custom { background-color: var(--navy); }
+.navbar-custom .nav-link { color: #cbd5e1; padding: 0.5rem 0.9rem; }
+.navbar-custom .nav-link:hover { color: #ffffff; }
+.navbar-custom .nav-link.active { color: #ffffff; border-bottom: 2px solid #60a5fa; }
+
+.page-title { color: var(--navy); font-weight: 700; }
+.page-subtitle { color: #64748b; }
+
+.card { border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 3px rgba(11, 37, 69, 0.06); }
+.card-header { background-color: #ffffff; color: var(--navy); font-weight: 600; border-bottom: 1px solid var(--border); }
+
+.stat-card { border-left: 5px solid var(--blue); }
+.stat-label { color: #64748b; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { color: var(--navy); font-size: 1.8rem; font-weight: 700; }
+
+.btn-primary { background-color: var(--blue); border-color: var(--blue); }
+.btn-primary:hover { background-color: var(--navy); border-color: var(--navy); }
+
+.table thead th { background-color: var(--navy); color: #ffffff; font-weight: 500; white-space: nowrap; }
+.table-scroll { max-height: 420px; overflow-y: auto; }
+
+.footer-note { color: #64748b; font-size: 0.85rem; }
