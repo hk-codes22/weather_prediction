@@ -3,5 +3,158 @@
 
 {% block content %}
 <h1 class="page-title">Rainfall Prediction</h1>
-<p class="page-subtitle">This page will be built in Step 7.</p>
+<p class="page-subtitle">Enter today's weather readings to get a rainfall estimate from the trained model.</p>
+
+{% if not bundle %}
+
+<div class="card mb-4">
+    <div class="card-header">The model has not been trained yet</div>
+    <div class="card-body">
+        <p>No prediction can be shown until a model is trained on real data. Do one of these:</p>
+        <ol>
+            <li>Click the button below, <strong>or</strong></li>
+            <li>Open the terminal in the project folder and run <code>python train_model.py</code>, then refresh this page.</li>
+        </ol>
+        <form action="{{ url_for('train_model_route') }}" method="post">
+            <button class="btn btn-primary" type="submit">Train model now</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+
+{% if trained_on_sample %}
+<div class="alert alert-warning">
+    <strong>Demonstration data:</strong> this model was trained on the sample dataset, which is not real NOAA data.
+    Its results show how the project works and must not be used to plan anything real.
+</div>
+{% endif %}
+{% if not bundle.beats_baseline %}
+<div class="alert alert-danger">
+    On the test days this model was <strong>not better</strong> than the simple "always predict the average" baseline.
+    Do not rely on its estimates.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <!-- Prediction form -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Weather readings</div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('prediction') }}" id="predict-form">
+                    {% for f in fields %}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ f.name }}">{{ f.label }}</label>
+                        <input class="form-control" type="number" id="{{ f.name }}" name="{{ f.name }}"
+                               min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}"
+                               value="{{ entered[f.name] }}" required>
+                        <div class="form-text">Allowed range: {{ f.min }} to {{ f.max }}</div>
+                    </div>
+                    {% endfor %}
+                    <button class="btn btn-primary" type="submit">Estimate rainfall</button>
+                    <button class="btn btn-outline-secondary" type="button" onclick="fillExample('dry')">Example: dry day</button>
+                    <button class="btn btn-outline-secondary" type="button" onclick="fillExample('humid')">Example: humid day</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Result</div>
+            <div class="card-body">
+                {% if result %}
+                    <div class="stat-label">Estimated rainfall</div>
+                    <div class="stat-value mb-2">{{ result.mm }} mm</div>
+                    <span class="badge text-bg-{{ result.colour }} fs-6 mb-3">{{ result.category }}</span>
+                    <p class="mb-0">
+                        This is a <strong>model estimate</strong> based on past weather records, not an official weather forecast.
+                        It can be wrong, especially for heavy rain.
+                    </p>
+                {% else %}
+                    <p class="text-muted mb-0">Fill in the four readings and click "Estimate rainfall". The result will appear here.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <!-- Model information -->
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">About the trained model</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><th>Model type</th><td>{{ bundle.model_name }}</td></tr>
+                        <tr><th>Trained on file</th><td>{{ bundle.data_file }}</td></tr>
+                        <tr><th>Trained at</th><td>{{ bundle.trained_at }}</td></tr>
+                        <tr><th>Training days</th><td>{{ bundle.train_rows }} (older days)</td></tr>
+                        <tr><th>Testing days</th><td>{{ bundle.test_rows }} (newest days: {{ bundle.test_period }})</td></tr>
+                        <tr><th>Model error on test days</th><td>MAE {{ bundle.metrics.mae }} mm, RMSE {{ bundle.metrics.rmse }} mm</td></tr>
+                        <tr><th>Baseline error (always predict the average)</th><td>MAE {{ bundle.baseline_metrics.mae }} mm, RMSE {{ bundle.baseline_metrics.rmse }} mm</td></tr>
+                        {% if bundle.importance %}
+                        <tr><th>Feature importance</th>
+                            <td>{% for name, value in bundle.importance.items() %}{{ name }}: {{ value }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('train_model_route') }}" method="post">
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Retrain on the data currently in use</button>
+                </form>
+                <div class="form-text mt-2">Uses the uploaded CSV if you uploaded one, otherwise the sample data.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category thresholds -->
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">Rainfall categories</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Estimate</th><th>Category</th></tr></thead>
+                    <tbody>
+                        <tr><td>below 0.5 mm</td><td>No rain</td></tr>
+                        <tr><td>0.5 to below 7.5 mm</td><td>Light rain</td></tr>
+                        <tr><td>7.5 to below 35 mm</td><td>Moderate rain</td></tr>
+                        <tr><td>35 mm or more</td><td>Heavy rain</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-body form-text">These are simple thresholds chosen for this project, not official meteorological limits.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Estimating vs. forecasting</div>
+    <div class="card-body">
+        <p><strong>Estimating</strong> (what this page does): you give today's temperature, humidity, pressure and wind speed,
+        and the model estimates how much rain goes with those conditions.</p>
+        <p class="mb-0"><strong>Forecasting</strong> (not done here): using the recent history of many days to predict rain on
+        future days. That needs a time-series model and is listed under future improvements.</p>
+    </div>
+</div>
+
+<script>
+    // Fills the form with example readings (handy for demonstrations)
+    function fillExample(kind) {
+        var examples = {
+            dry:   {temperature: 24, humidity: 45, pressure: 1013, wind_speed: 6},
+            humid: {temperature: 30, humidity: 90, pressure: 1000, wind_speed: 14}
+        };
+        var values = examples[kind];
+        for (var name in values) {
+            document.getElementById(name).value = values[name];
+        }
+    }
+</script>
+
+{% endif %}
 {% endblock %}

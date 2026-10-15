@@ -3,13 +3,21 @@ app.py
 Main Flask application: it connects the web pages (templates) with Python code.
 Run with:  python app.py
 """
+import io
+import math
 import os
+import time
 
 import numpy as np
 import pandas as pd
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import (Flask, Response, flash, redirect, render_template,
+                   request, session, url_for)
+from PIL import Image
 
+import charts
 import data_utils
+import train_model
+from analysis_utils import WeatherAnalyzer
 
 app = Flask(__name__)
 app.secret_key = "change-this-secret-key"             # needed for flash messages
@@ -19,6 +27,28 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024    # uploads limited to 5 MB
 UPLOAD_PATH = os.path.join(data_utils.BASE_DIR, "data", "uploaded_weather.csv")
 
 NUMBER_COLUMNS = ["temperature", "humidity", "pressure", "wind_speed", "rainfall"]
+
+# The 4 prediction inputs: allowed range is only used to catch typing mistakes
+INPUT_FIELDS = [
+    {"name": "temperature", "label": "Temperature (°C)", "min": -30, "max": 60, "step": "0.1"},
+    {"name": "humidity", "label": "Humidity (%)", "min": 0, "max": 100, "step": "0.1"},
+    {"name": "pressure", "label": "Atmospheric pressure (hPa)", "min": 850, "max": 1100, "step": "0.1"},
+    {"name": "wind_speed", "label": "Wind speed (km/h)", "min": 0, "max": 200, "step": "0.1"},
+]
+
+# Badge colour for each rainfall category
+CATEGORY_COLOURS = {
+    "No rain": "secondary",
+    "Light rain": "info",
+    "Moderate rain": "primary",
+    "Heavy rain": "danger",
+}
+
+
+# Satellite image settings
+IMAGE_FOLDER = os.path.join(data_utils.BASE_DIR, "static", "images")
+ALLOWED_IMAGE_TYPES = {"PNG": "png", "JPEG": "jpg"}     # image format -> file ending
+Image.MAX_IMAGE_PIXELS = 40_000_000                     # refuse extremely large images
 
 
 # ---------------------------------------------------------------- helper functions
@@ -63,13 +93,14 @@ def statistics_rows(df):
 @app.route("/")
 def index():
     stats = None
+    chart = None
     try:
         df = data_utils.load_weather_data(active_data_path())
         stats = data_utils.dashboard_stats(df)
+        chart = charts.monthly_total_chart(WeatherAnalyzer(df))
     except ValueError as error:
         flash(str(error), "danger")
-    # 'chart' will be filled in Step 8 (Matplotlib)
-    return render_template("index.html", stats=stats, chart=None, using_upload=using_upload())
+    return render_template("index.html", stats=stats, chart=chart, using_upload=using_upload())
 
 
 # ---------------------------------------------------------------- page 2: weather data
@@ -165,25 +196,201 @@ def reset_data():
     return redirect(url_for("weather_data"))
 
 
-# ---------------------------------------------------------------- pages built later
-@app.route("/prediction")
+# ---------------------------------------------------------------- page 3: prediction
+@app.route("/prediction", methods=["GET", "POST"])
 def prediction():
-    return render_template("prediction.html")
+    bundle = train_model.load_model()          # None if the model is not trained yet
+    entered = {}                               # what the user typed (to refill the form)
+    result = None
+
+    if bundle is not None and request.method == "POST":
+        values = {}
+        errors = []
+        for field in INPUT_FIELDS:
+            text = request.form.get(field["name"], "").strip()
+            entered[field["name"]] = text
+            try:
+                number = float(text)
+                if not math.isfinite(number):
+                    raise ValueError
+            except ValueError:
+                errors.append(field["label"] + " must be a number.")
+                continue
+            if number < field["min"] or number > field["max"]:
+                errors.append(field["label"] + " must be between "
+                              + str(field["min"]) + " and " + str(field["max"]) + ".")
+                continue
+            values[field["name"]] = number
+
+        if errors:
+            for message in errors:
+                flash(message, "danger")
+        else:
+            millimetres = train_model.predict_rainfall(bundle, values)
+            category = train_model.rainfall_category(millimetres)
+            result = {
+                "mm": millimetres,
+                "category": category,
+                "colour": CATEGORY_COLOURS[category],
+            }
+
+    return render_template(
+        "prediction.html",
+        bundle=bundle,
+        fields=INPUT_FIELDS,
+        entered=entered,
+        result=result,
+        trained_on_sample=(bundle is not None and bundle["data_file"] == "sample_weather.csv"),
+    )
 
 
+@app.route("/train-model", methods=["POST"])
+def train_model_route():
+    """Train the model again on the data currently in use (sample or uploaded CSV)."""
+    try:
+        bundle = train_model.train_and_save(active_data_path())
+    except ValueError as error:
+        flash("Training failed: " + str(error), "danger")
+        return redirect(url_for("prediction"))
+    flash("Model trained on " + bundle["data_file"] + ". Test MAE = "
+          + str(bundle["metrics"]["mae"]) + " mm, RMSE = " + str(bundle["metrics"]["rmse"]) + " mm.", "success")
+    return redirect(url_for("prediction"))
+
+
+# ---------------------------------------------------------------- page 4: analysis
 @app.route("/analysis")
 def analysis():
-    return render_template("analysis.html")
+    try:
+        df = data_utils.load_weather_data(active_data_path())
+    except ValueError as error:
+        flash(str(error), "danger")
+        return render_template("analysis.html", ok=False)
+
+    analyzer = WeatherAnalyzer(df)
+
+    chart_images = {
+        "rainfall": charts.trend_chart(analyzer, "rainfall", "Rainfall over time", "Rainfall (mm)"),
+        "temperature": charts.trend_chart(analyzer, "temperature", "Temperature over time", "Temperature (°C)"),
+        "humidity": charts.trend_chart(analyzer, "humidity", "Humidity over time", "Humidity (%)"),
+        "monthly": charts.monthly_average_chart(analyzer),
+        "heatmap": charts.heatmap_chart(analyzer),
+    }
+
+    trend_sentences = []
+    for column in ["rainfall", "temperature", "humidity"]:
+        trend_sentences.append(analyzer.trend_text(column))
+
+    correlation_rows = []
+    for name, value in analyzer.rainfall_correlations().items():
+        correlation_rows.append({"name": name, "value": 0.0 if pd.isna(value) else float(value)})
+
+    return render_template(
+        "analysis.html",
+        ok=True,
+        charts=chart_images,
+        summary=analyzer.summary(),
+        trends=trend_sentences,
+        correlations=correlation_rows,
+        days=len(df),
+    )
 
 
-@app.route("/satellite")
+@app.route("/download-analysis")
+def download_analysis():
+    """Send the analysed data as a CSV file (cleaned data + year, month and 30-day averages)."""
+    try:
+        df = data_utils.load_weather_data(active_data_path())
+    except ValueError as error:
+        flash(str(error), "danger")
+        return redirect(url_for("analysis"))
+
+    analyzer = WeatherAnalyzer(df)
+    result = df.copy()
+    result["year"] = result["date"].dt.year
+    result["month"] = result["date"].dt.month
+    for column in ["rainfall", "temperature", "humidity"]:
+        result[column + "_30day_avg"] = analyzer.moving_average(column).round(2)
+    result["date"] = result["date"].dt.strftime("%Y-%m-%d")
+
+    return Response(
+        result.to_csv(index=False),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=weather_analysis.csv"},
+    )
+
+
+# ---------------------------------------------------------------- page 5: satellite images
+@app.route("/satellite", methods=["GET", "POST"])
 def satellite():
-    return render_template("satellite.html")
+    if request.method == "POST":
+        file = request.files.get("image_file")
+        if file is None or file.filename == "":
+            flash("Please choose an image first.", "warning")
+            return redirect(url_for("satellite"))
+
+        ending = os.path.splitext(file.filename)[1].lower()
+        if ending not in (".png", ".jpg", ".jpeg"):
+            flash("Only PNG and JPEG images are supported.", "danger")
+            return redirect(url_for("satellite"))
+
+        data = file.read()
+        try:
+            Image.open(io.BytesIO(data)).verify()        # is it really an image?
+            image = Image.open(io.BytesIO(data))         # open again after verify()
+            image_format = image.format
+            width, height = image.size
+            colour_mode = image.mode
+            grey = image.convert("L")                    # grey-scale copy for brightness
+        except Exception:
+            flash("This file could not be read as an image. It may be damaged.", "danger")
+            return redirect(url_for("satellite"))
+
+        if image_format not in ALLOWED_IMAGE_TYPES:
+            flash("Only PNG and JPEG images are supported.", "danger")
+            return redirect(url_for("satellite"))
+
+        os.makedirs(IMAGE_FOLDER, exist_ok=True)
+        for old_name in ("satellite_upload.png", "satellite_upload.jpg"):
+            old_path = os.path.join(IMAGE_FOLDER, old_name)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+
+        saved_name = "satellite_upload." + ALLOWED_IMAGE_TYPES[image_format]
+        with open(os.path.join(IMAGE_FOLDER, saved_name), "wb") as saved_file:
+            saved_file.write(data)
+
+        session["satellite"] = {
+            "original_name": os.path.basename(file.filename),
+            "saved_name": saved_name,
+            "width": width,
+            "height": height,
+            "format": image_format,
+            "mode": colour_mode,
+            "size_kb": round(len(data) / 1024, 1),
+            "brightness": round(float(np.asarray(grey).mean()), 1),
+            "version": int(time.time()),                 # makes the browser reload the new image
+        }
+        flash("Image uploaded successfully.", "success")
+        return redirect(url_for("satellite"))
+
+    info = session.get("satellite")
+    if info and not os.path.exists(os.path.join(IMAGE_FOLDER, info["saved_name"])):
+        info = None
+    return render_template("satellite.html", info=info)
+
+
+# ---------------------------------------------------------------- page 6 (built in Step 9)
 
 
 @app.route("/about")
 def about():
     return render_template("about.html")
+
+
+@app.errorhandler(413)
+def file_too_large(error):
+    flash("The file is too large. The limit is 5 MB.", "danger")
+    return redirect(request.referrer or url_for("index"))
 
 
 if __name__ == "__main__":

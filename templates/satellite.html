@@ -3,5 +3,78 @@
 
 {% block content %}
 <h1 class="page-title">Satellite Image Viewer</h1>
-<p class="page-subtitle">This page will be built in Step 8.</p>
+<p class="page-subtitle">Upload a satellite image to view it and check its size.</p>
+
+<div class="alert alert-info">
+    <strong>Please note:</strong> this page only displays and measures the image you upload.
+    The rainfall model does <strong>not</strong> use satellite images. It is trained only on the weather table
+    (temperature, humidity, pressure, wind speed and rainfall).
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">Upload an image</div>
+            <div class="card-body">
+                <form action="{{ url_for('satellite') }}" method="post" enctype="multipart/form-data">
+                    <input class="form-control mb-2" type="file" name="image_file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+                    <div class="form-text mb-3">Supported formats: PNG, JPEG. Maximum size: 5 MB.</div>
+                    <button class="btn btn-primary" type="submit">Upload and view</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header">Image preview</div>
+            <div class="card-body text-center">
+                {% if info %}
+                    <img class="img-fluid rounded border" style="max-height: 420px;"
+                         src="{{ url_for('static', filename='images/' + info.saved_name) }}?v={{ info.version }}"
+                         alt="Uploaded satellite image">
+                {% else %}
+                    <p class="text-muted mb-0">No image uploaded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if info %}
+<div class="card mb-4">
+    <div class="card-header">Image details</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <tbody>
+                <tr><th>File name</th><td>{{ info.original_name }}</td></tr>
+                <tr><th>Dimensions</th><td>{{ info.width }} x {{ info.height }} pixels (width x height)</td></tr>
+                <tr><th>Format</th><td>{{ info.format }}</td></tr>
+                <tr><th>Colour mode</th><td>{{ info.mode }}</td></tr>
+                <tr><th>File size</th><td>{{ info.size_kb }} KB</td></tr>
+                <tr><th>Average brightness</th><td>{{ info.brightness }} (0 = black, 255 = white)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="card-body form-text">Average brightness is only a simple inspection value calculated with NumPy. The prediction model does not use it.</div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">How real NOAA satellite images could be added later</div>
+    <div class="card-body">
+        <ol class="mb-2">
+            <li>Download satellite images for your weather station's area and dates from NOAA
+                (for example the GOES imagery pages at
+                <a href="https://www.star.nesdis.noaa.gov/GOES/" target="_blank" rel="noopener">star.nesdis.noaa.gov/GOES</a>).
+                Check the site for the download options currently offered.</li>
+            <li>Name each image with its date, such as <code>2023-07-15.png</code>, so it can be matched with the weather table.</li>
+            <li>Turn every image into a few numbers (for example average brightness or the share of bright cloud pixels).</li>
+            <li>Add those numbers as new columns next to the weather data.</li>
+            <li>Train the model again and compare its test error with the model that uses no images.
+                Only if the error improves can you say the satellite data helps.</li>
+        </ol>
+        <div class="form-text">Until these steps are done and tested, this project does not predict rainfall from satellite images.</div>
+    </div>
+</div>
 {% endblock %}

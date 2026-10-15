@@ -2,6 +2,96 @@
 {% block title %}Weather Analysis{% endblock %}
 
 {% block content %}
-<h1 class="page-title">Weather Analysis</h1>
-<p class="page-subtitle">This page will be built in Step 8.</p>
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="page-title">Weather Analysis</h1>
+        <p class="page-subtitle mb-0">Trends, monthly patterns and relationships in the weather data.</p>
+    </div>
+    {% if ok %}
+    <a class="btn btn-primary mt-2" href="{{ url_for('download_analysis') }}">Download analysed data (CSV)</a>
+    {% endif %}
+</div>
+
+{% if ok %}
+
+<div class="card mb-4">
+    <div class="card-header">Trend analysis ({{ days }} days of data)</div>
+    <div class="card-body">
+        <ul class="mb-2">
+            {% for sentence in trends %}<li>{{ sentence }}</li>{% endfor %}
+        </ul>
+        <div class="form-text">Each sentence comes from a straight line fitted through the data. It is a rough summary, not a prediction.</div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Rainfall trend</div>
+    <div class="card-body text-center"><img class="img-fluid" src="data:image/png;base64,{{ charts.rainfall }}" alt="Rainfall trend chart"></div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Temperature trend</div>
+            <div class="card-body text-center"><img class="img-fluid" src="data:image/png;base64,{{ charts.temperature }}" alt="Temperature trend chart"></div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Humidity trend</div>
+            <div class="card-body text-center"><img class="img-fluid" src="data:image/png;base64,{{ charts.humidity }}" alt="Humidity trend chart"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Average rainfall by month</div>
+    <div class="card-body text-center"><img class="img-fluid" src="data:image/png;base64,{{ charts.monthly }}" alt="Average rainfall by month"></div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">Correlation heatmap</div>
+            <div class="card-body text-center"><img class="img-fluid" src="data:image/png;base64,{{ charts.heatmap }}" alt="Correlation heatmap"></div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">Correlation with rainfall</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Column</th><th>Correlation</th></tr></thead>
+                    <tbody>
+                    {% for c in correlations %}
+                        <tr><td>{{ c.name }}</td><td>{{ '%.2f' % c.value }}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-body form-text">
+                Values go from -1 to +1. Close to +1: the two columns rise together. Close to -1: one rises when the other falls.
+                Close to 0: no straight-line link. <strong>Correlation does not prove that one thing causes another.</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Summary statistics</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Column</th><th>Mean</th><th>Median</th><th>Std. dev.</th></tr></thead>
+            <tbody>
+            {% for name, s in summary.items() %}
+                <tr><td>{{ name }}</td><td>{{ s.mean }}</td><td>{{ s.median }}</td><td>{{ s.std }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-secondary">The analysis cannot be shown because the data could not be loaded. Check the Weather Data page.</div>
+{% endif %}
 {% endblock %}
